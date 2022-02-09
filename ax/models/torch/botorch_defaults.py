@@ -192,6 +192,7 @@ def get_NEI(
     **kwargs: Any,
 ) -> AcquisitionFunction:
     r"""Instantiates a qNoisyExpectedImprovement acquisition function."""
+    # TODO: NEI here - not being optimized yet though
     return _get_acquisition_func(
         model=model,
         acquisition_function_name="qNEI",
@@ -308,7 +309,7 @@ def scipy_optimizer(
     rounding_func: Optional[Callable[[Tensor], Tensor]] = None,
     **kwargs: Any,
 ) -> Tuple[Tensor, Tensor]:
-    r"""Optimizer using scipy's minimize module on a numpy-adpator.
+    r"""Optimizer using scipy's minimize module on a numpy-adaptor.
 
     Args:
         acq_function: A botorch AcquisitionFunction.
@@ -336,6 +337,7 @@ def scipy_optimizer(
           values, where `i`-th element is the expected acquisition value
           conditional on having observed candidates `0,1,...,i-1`.
     """
+    # TODO: this is where we want the argument to be passed.
     num_restarts: int = kwargs.pop(Keys.NUM_RESTARTS, 20)
     raw_samples: int = kwargs.pop(Keys.RAW_SAMPLES, 50 * num_restarts)
 

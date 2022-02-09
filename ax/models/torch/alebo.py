@@ -470,6 +470,7 @@ def ei_or_nei(
         return ExpectedImprovement(model=model, best_f=best_f, maximize=maximize)
     else:
         with gpytorch.settings.max_cholesky_size(2000):
+            # TODO: where is this optimized?
             acq = get_NEI(
                 model=model,
                 objective_weights=objective_weights,

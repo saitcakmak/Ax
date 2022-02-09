@@ -445,7 +445,7 @@ def get_fully_bayesian_acqf(
     #  AcquisitionFunction]`; used as `Callable[[Model, Tensor,
     #  Optional[Tuple[Tensor, Tensor]], Optional[Tensor], Optional[Tensor],
     #  **(Any)], AcquisitionFunction]`.
-    acqf_constructor: TAcqfConstructor = get_NEI,
+    acqf_constructor: TAcqfConstructor = get_NEI,  # TODO:
     **kwargs: Any,
 ) -> AcquisitionFunction:
     kwargs["marginalize_dim"] = -3
@@ -476,6 +476,7 @@ def get_fully_bayesian_acqf_nehvi(
     X_pending: Optional[Tensor] = None,
     **kwargs: Any,
 ) -> AcquisitionFunction:
+    # TODO:
     return get_fully_bayesian_acqf(
         model=model,
         objective_weights=objective_weights,

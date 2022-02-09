@@ -104,6 +104,7 @@ def get_MOO_NEHVI(
                     # memory issues in the initialization
                     "batch_limit": DEFAULT_EHVI_BATCH_LIMIT,
                     "sequential": True,
+                    "sample_around_best": True,
                 },
             },
             use_input_warping=use_input_warping,
@@ -186,6 +187,7 @@ def get_MTGP_NEHVI(
                     # memory issues in the initialization
                     "batch_limit": DEFAULT_EHVI_BATCH_LIMIT,
                     "sequential": True,
+                    "sample_around_best": True,
                 },
             },
         ),
@@ -259,6 +261,10 @@ def get_botorch(
     """Instantiates a BotorchModel."""
     if data.df.empty:  # pragma: no cover
         raise ValueError("`BotorchModel` requires non-empty data.")
+    if acqf_constructor is get_NEI:
+        optimization_config = optimization_config or {}
+        # TODO: is this the correct use or do we need to pass it as {options}?
+        optimization_config["sample_around_best"] = True
     return checked_cast(
         TorchModelBridge,
         Models.BOTORCH(
@@ -288,6 +294,7 @@ def get_GPEI(
     device: torch.device = DEFAULT_TORCH_DEVICE,
 ) -> TorchModelBridge:
     """Instantiates a GP model that generates points with EI."""
+    # TODO: Does this use EI or NEI?
     if data.df.empty:  # pragma: no cover
         raise ValueError("GP+EI BotorchModel requires non-empty data.")
     return checked_cast(
@@ -577,7 +584,10 @@ def get_MOO_PAREGO(
                 "acquisition_function_kwargs": {
                     "chebyshev_scalarization": True,
                     "sequential": True,
-                }
+                },
+                "optimizer_kwargs": {
+                    "sample_around_best": True,
+                },
             },
         ),
     )
@@ -616,7 +626,10 @@ def get_MOO_RS(
                 "acquisition_function_kwargs": {
                     "random_scalarization": True,
                     "sequential": True,
-                }
+                },
+                "optimizer_kwargs": {
+                    "sample_around_best": True,
+                },
             },
         ),
     )
@@ -692,7 +705,10 @@ def get_MTGP_PAREGO(
                 "acquisition_function_kwargs": {
                     "chebyshev_scalarization": True,
                     "sequential": True,
-                }
+                },
+                "optimizer_kwargs": {
+                    "sample_around_best": True,
+                },
             },
         ),
     )

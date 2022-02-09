@@ -379,6 +379,7 @@ class BotorchModel(TorchModel):
                 AcquisitionFunction, acquisition_function
             )
             # pyre-ignore: [28]
+            # TODO: if NEI, we want to pass "sample_around_best": True
             candidates, expected_acquisition_value = self.acqf_optimizer(
                 acq_function=checked_cast(AcquisitionFunction, acquisition_function),
                 bounds=bounds_,
