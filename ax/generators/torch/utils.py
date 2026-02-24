@@ -26,7 +26,10 @@ from botorch.acquisition.multi_objective.base import (
     MultiObjectiveAnalyticAcquisitionFunction,
     MultiObjectiveMCAcquisitionFunction,
 )
-from botorch.acquisition.multi_objective.objective import WeightedMCMultiOutputObjective
+from botorch.acquisition.multi_objective.objective import (
+    GenericMCMultiOutputObjective,
+    WeightedMCMultiOutputObjective,
+)
 from botorch.acquisition.objective import (
     ConstrainedMCObjective,
     GenericMCObjective,
@@ -296,6 +299,36 @@ def _get_weighted_mo_objective(
     )
 
 
+def _get_scalarized_mo_objective(
+    objective_weight_matrix: Tensor,
+) -> GenericMCMultiOutputObjective:
+    """Constructs a `GenericMCMultiOutputObjective` that maps model outputs
+    to scalarized objective values using a weight matrix.
+
+    Args:
+        objective_weight_matrix: A ``(n_objectives x n_outcomes)`` tensor
+            where each row defines one MOO objective as a linear combination
+            of model outputs. Signs encode direction (positive = maximize).
+
+    Returns:
+        A `GenericMCMultiOutputObjective` that computes
+        ``samples @ weight_matrix.T``.
+    """
+    # W is (n_objectives x n_outcomes), already has signs baked in.
+    # We capture it by closure.
+    W = objective_weight_matrix
+
+    def scalarized_objective(
+        samples: Tensor, X: Tensor | None = None
+    ) -> Tensor:
+        # samples: sample_shape x batch_shape x q x m  (or (m,) for thresholds)
+        # W: n_objectives x m
+        # returns: ... x n_objectives
+        return samples @ W.T
+
+    return GenericMCMultiOutputObjective(objective=scalarized_objective)
+
+
 def get_botorch_objective_and_transform(
     botorch_acqf_class: type[AcquisitionFunction],
     model: Model,
@@ -303,6 +336,7 @@ def get_botorch_objective_and_transform(
     outcome_constraints: tuple[Tensor, Tensor] | None = None,
     X_observed: Tensor | None = None,
     learned_objective_preference_model: Model | None = None,
+    objective_weight_matrix: Tensor | None = None,
 ) -> tuple[MCAcquisitionObjective | None, PosteriorTransform | None]:
     """Constructs a BoTorch `AcquisitionObjective` object.
 
@@ -319,6 +353,12 @@ def get_botorch_objective_and_transform(
             A f(x) <= b. (Not used by single task models)
         X_observed: Observed points that are feasible and appear in the
             objective or the constraints. None if there are no such points.
+        learned_objective_preference_model: A BoTorch Model for learned
+            objective (preference model).
+        objective_weight_matrix: A ``(n_objectives x n_outcomes)`` tensor
+            encoding the scalarization structure for multi-objective
+            optimization with scalarized sub-objectives. Signs encode
+            direction (positive = maximize). None for standard MOO.
 
     Returns:
         A two-tuple containing (optionally) an `MCAcquisitionObjective` and
@@ -337,6 +377,13 @@ def get_botorch_objective_and_transform(
         ),
     ):
         # We are doing multi-objective optimization.
+        if objective_weight_matrix is not None:
+            return (
+                _get_scalarized_mo_objective(
+                    objective_weight_matrix=objective_weight_matrix
+                ),
+                None,
+            )
         return _get_weighted_mo_objective(objective_weights=objective_weights), None
     if outcome_constraints and issubclass(botorch_acqf_class, MCAcquisitionFunction):
         # If there are outcome constraints, we use MC Acquisition functions.

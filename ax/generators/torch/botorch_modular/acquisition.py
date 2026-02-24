@@ -227,6 +227,9 @@ class Acquisition(Base):
             torch_opt_config.objective_thresholds
         )
         self._full_objective_weights: Tensor = torch_opt_config.objective_weights
+        self._full_objective_weight_matrix: Tensor | None = (
+            torch_opt_config.objective_weight_matrix
+        )
 
         (
             self._model,
@@ -239,6 +242,16 @@ class Acquisition(Base):
             outcome_constraints=torch_opt_config.outcome_constraints,
             objective_thresholds=torch_opt_config.objective_thresholds,
         )
+        # Subset the objective weight matrix columns to match the subsetted model.
+        if (
+            self._full_objective_weight_matrix is not None
+            and self._subset_idcs is not None
+        ):
+            self._objective_weight_matrix: Tensor | None = (
+                self._full_objective_weight_matrix[:, self._subset_idcs]
+            )
+        else:
+            self._objective_weight_matrix = self._full_objective_weight_matrix
         self._update_objective_thresholds(torch_opt_config=torch_opt_config)
         self._set_preference_model(torch_opt_config=torch_opt_config)
 
@@ -316,6 +329,7 @@ class Acquisition(Base):
                 outcome_constraints=torch_opt_config.outcome_constraints,
                 subset_idcs=self._subset_idcs,
                 objective_thresholds=self._full_objective_thresholds,
+                objective_weight_matrix=self._full_objective_weight_matrix,
             )
             self._objective_thresholds = (
                 none_throws(self._full_objective_thresholds)[self._subset_idcs]
@@ -396,11 +410,30 @@ class Acquisition(Base):
                 constraint_transforms = constraint_transforms + threshold_transforms
             elif threshold_transforms is not None:
                 constraint_transforms = threshold_transforms
+
+        # For scalarized multi-objective, we need objective_thresholds in
+        # component-metric space without NaN, so the BoTorch input constructor
+        # can correctly compute ref_point = objective(thresholds) and
+        # partitioning.
+        objective_thresholds_for_constructor = self._objective_thresholds
+        if self._objective_weight_matrix is not None and self._objective_thresholds is not None:
+            # The inferred thresholds have scalarized values at specific
+            # positions (first nonzero column of each objective row) and NaN
+            # elsewhere. We need to replace NaN with 0 so that
+            # thresholds @ W.T produces the correct scalarized thresholds.
+            # This works because each non-NaN entry is the full scalarized
+            # threshold, and the W matrix has 1s at those positions,
+            # so zeros at other positions don't affect the result.
+            objective_thresholds_for_constructor = self._objective_thresholds.clone()
+            objective_thresholds_for_constructor[
+                objective_thresholds_for_constructor.isnan()
+            ] = 0.0
+
         input_constructor_kwargs = {
             "model": model,
             "X_baseline": self.X_observed,
             "X_pending": self.X_pending,
-            "objective_thresholds": self._objective_thresholds,
+            "objective_thresholds": objective_thresholds_for_constructor,
             "constraints": constraint_transforms,
             "constraints_tuple": self._outcome_constraints,
             "objective": objective,
@@ -895,6 +928,7 @@ class Acquisition(Base):
             outcome_constraints=outcome_constraints,
             X_observed=X_observed,
             learned_objective_preference_model=learned_objective_preference_model,
+            objective_weight_matrix=self._objective_weight_matrix,
         )
 
     def _condition_on_prev_candidates(

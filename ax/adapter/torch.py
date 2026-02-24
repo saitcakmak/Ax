@@ -20,6 +20,7 @@ from ax.adapter.adapter_utils import (
     arm_to_np_array,
     array_to_observation_data,
     extract_objective_thresholds,
+    extract_objective_weight_matrix,
     extract_objective_weights,
     extract_outcome_constraints,
     extract_parameter_constraints,
@@ -878,6 +879,7 @@ class TorchAdapter(Adapter):
         if (
             isinstance(optimization_config, MultiObjectiveOptimizationConfig)
             and gen_metadata.get("objective_thresholds", None) is not None
+            and torch_opt_config.objective_weight_matrix is None
         ):
             # If objective_thresholds are supplied by the user, then the transformed
             # user-specified objective thresholds are in gen_metadata. Otherwise,
@@ -1039,6 +1041,17 @@ class TorchAdapter(Adapter):
         if isinstance(optimization_config, PreferenceOptimizationConfig):
             use_learned_objective = True
 
+        # Extract objective weight matrix for MultiObjective with
+        # ScalarizedObjective children.
+        obj_weight_matrix_np = extract_objective_weight_matrix(
+            objective=optimization_config.objective, outcomes=self.outcomes
+        )
+        obj_weight_matrix = (
+            torch.tensor(obj_weight_matrix_np, dtype=obj_w.dtype, device=obj_w.device)
+            if obj_weight_matrix_np is not None
+            else None
+        )
+
         torch_opt_config = TorchOptConfig(
             objective_weights=obj_w,
             outcome_constraints=out_c,
@@ -1052,6 +1065,7 @@ class TorchAdapter(Adapter):
             is_moo=optimization_config.is_moo_problem,
             use_learned_objective=use_learned_objective,
             pruning_target_point=pruning_target_p,
+            objective_weight_matrix=obj_weight_matrix,
         )
         return search_space_digest, torch_opt_config
 

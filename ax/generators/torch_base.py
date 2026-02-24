@@ -90,6 +90,7 @@ class TorchOptConfig:
     is_moo: bool = False
     use_learned_objective: bool = False
     pruning_target_point: Tensor | None = None
+    objective_weight_matrix: Tensor | None = None
 
 
 @dataclass(frozen=True)

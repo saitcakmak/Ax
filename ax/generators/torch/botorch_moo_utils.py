@@ -31,7 +31,10 @@ import torch
 from ax.exceptions.core import AxError
 from ax.generators.torch.utils import subset_model
 from ax.generators.torch_base import TorchGenerator
-from botorch.acquisition.multi_objective.objective import WeightedMCMultiOutputObjective
+from botorch.acquisition.multi_objective.objective import (
+    GenericMCMultiOutputObjective,
+    WeightedMCMultiOutputObjective,
+)
 from botorch.models.model import Model
 from botorch.posteriors.gpytorch import GPyTorchPosterior
 from botorch.posteriors.posterior import Posterior
@@ -51,8 +54,10 @@ NO_FEASIBLE_POINTS_MESSAGE = (
 
 
 def get_weighted_mc_objective_and_objective_thresholds(
-    objective_weights: Tensor, objective_thresholds: Tensor
-) -> tuple[WeightedMCMultiOutputObjective, Tensor]:
+    objective_weights: Tensor,
+    objective_thresholds: Tensor,
+    objective_weight_matrix: Tensor | None = None,
+) -> tuple[WeightedMCMultiOutputObjective | GenericMCMultiOutputObjective, Tensor]:
     r"""Construct weighted objective and apply the weights to objective thresholds.
 
     Args:
@@ -61,6 +66,10 @@ def get_weighted_mc_objective_and_objective_thresholds(
         objective_thresholds: A tensor containing thresholds forming a reference point
             from which to calculate pareto frontier hypervolume. Points that do not
             dominate the objective_thresholds contribute nothing to hypervolume.
+        objective_weight_matrix: An optional ``(n_objectives x n_outcomes)`` tensor
+            encoding scalarization structure. When provided, constructs a
+            ``GenericMCMultiOutputObjective`` and transforms thresholds to
+            scalarized-objective space.
 
     Returns:
         A two-element tuple with the objective and objective thresholds:
@@ -69,6 +78,16 @@ def get_weighted_mc_objective_and_objective_thresholds(
             - The objective thresholds
 
     """
+    if objective_weight_matrix is not None:
+        from ax.generators.torch.utils import _get_scalarized_mo_objective
+
+        objective = _get_scalarized_mo_objective(
+            objective_weight_matrix=objective_weight_matrix
+        )
+        # Thresholds are already in scalarized-objective space (n_objectives,).
+        # Thresholds have signs baked in (positive = maximize direction).
+        return objective, objective_thresholds
+
     nonzero_idcs = objective_weights.nonzero(as_tuple=False).view(-1)
     objective_weights = objective_weights[nonzero_idcs]
     objective_thresholds = objective_thresholds[nonzero_idcs]
@@ -196,6 +215,7 @@ def infer_objective_thresholds(
     outcome_constraints: tuple[Tensor, Tensor] | None = None,
     subset_idcs: Tensor | None = None,
     objective_thresholds: Tensor | None = None,
+    objective_weight_matrix: Tensor | None = None,
 ) -> Tensor:
     """Infer objective thresholds.
 
@@ -227,6 +247,9 @@ def infer_objective_thresholds(
             If only a subset of the objectives have known thresholds, the
             remaining objectives should be NaN. If no objective threshold
             was provided, this can be `None`.
+        objective_weight_matrix: An optional ``(n_objectives x n_outcomes)``
+            tensor encoding scalarization structure. When provided, computes
+            scalarized objective values before identifying the Pareto frontier.
 
     Returns:
         A `m`-dim tensor of objective thresholds, where the objective
@@ -266,6 +289,48 @@ def infer_objective_thresholds(
         pred = pred[feas]
     if pred.shape[0] == 0:
         raise AxError(NO_FEASIBLE_POINTS_MESSAGE)
+
+    if objective_weight_matrix is not None:
+        # Scalarized multi-objective case: compute scalarized objective values
+        # using the weight matrix (which has signs baked in for direction).
+        # Subset the weight matrix columns to match the subsetted model.
+        W_sub = objective_weight_matrix[:, subset_idcs]
+        # obj: (n_points x n_objectives), already in maximize space
+        obj = pred @ W_sub.T
+        pareto_obj = obj[is_non_dominated(obj)]
+        # No user-specified thresholds for scalarized sub-objectives
+        # in the initial implementation.
+        objective_thresholds_result = infer_reference_point(
+            pareto_Y=pareto_obj,
+            max_ref_point=None,
+            scale=0.1,
+        )
+        # Return thresholds in full outcome space with NaN for non-objective
+        # outcomes. We store the scalarized thresholds in the first
+        # n_objectives slots of the full tensor and NaN elsewhere.
+        # But downstream consumers expect (num_outcomes,) shape.
+        # We need to place the scalarized thresholds at the positions
+        # corresponding to the first metric of each scalarized objective.
+        # Actually, we return a (num_outcomes,) tensor with NaN everywhere
+        # except the component metric positions. The actual scalarized
+        # thresholds are returned separately via gen_metadata.
+        full_objective_thresholds = torch.full(
+            (num_outcomes,),
+            float("nan"),
+            dtype=objective_weights.dtype,
+            device=objective_weights.device,
+        )
+        # Store the scalarized thresholds. We encode them into the full tensor
+        # by putting them at the positions of the first nonzero column in each
+        # row of the weight matrix.
+        for i in range(objective_weight_matrix.shape[0]):
+            row = objective_weight_matrix[i]
+            first_nonzero = row.nonzero().view(-1)[0].item()
+            full_objective_thresholds[first_nonzero] = (
+                objective_thresholds_result[i].item()
+            )
+        return full_objective_thresholds
+
     obj_mask = objective_weights.nonzero().view(-1)
     obj_weights_subset = objective_weights[obj_mask]
     obj = pred[..., obj_mask] * obj_weights_subset
