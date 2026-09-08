@@ -289,8 +289,8 @@ class Encoder:
 
     def parameter_to_sqa(self, parameter: Parameter) -> SQAParameter:
         """Convert Ax Parameter to SQLAlchemy."""
-        # pyre-fixme[9]: Expected `Base` for 1st...typing.Type[Parameter]`.
-        parameter_class: SQAParameter = self.config.class_to_sqa_class[Parameter]
+        # pyre-ignore[9]: Expected `Base` for 1st...typing.Type[Parameter]`.
+        parameter_class: type[SQAParameter] = self.config.class_to_sqa_class[Parameter]
         if isinstance(parameter, RangeParameter):
             if parameter.logit_scale:
                 raise NotImplementedError(
@@ -298,7 +298,6 @@ class Encoder:
                     "the DB schema does not have a corresponding column. "
                     "Please reach out to the AE team if you need this feature. "
                 )
-            # pyre-fixme[29]: `SQAParameter` is not a function.
             return parameter_class(
                 id=parameter.db_id,
                 name=parameter.name,
@@ -321,7 +320,6 @@ class Encoder:
                     "when constructing parameters within the modeling layer. "
                     "It is not supported for storage."
                 )
-            # pyre-fixme[29]: `SQAParameter` is not a function.
             return parameter_class(
                 id=parameter.db_id,
                 name=parameter.name,
@@ -338,7 +336,6 @@ class Encoder:
                 default_value=parameter.default_value,
             )
         elif isinstance(parameter, FixedParameter):
-            # pyre-fixme[29]: `SQAParameter` is not a function.
             return parameter_class(
                 id=parameter.db_id,
                 name=parameter.name,
@@ -352,7 +349,6 @@ class Encoder:
                 default_value=parameter.default_value,
             )
         elif isinstance(parameter, DerivedParameter):
-            # pyre-fixme[29]: `SQAParameter` is not a function.
             return parameter_class(
                 id=parameter.db_id,
                 name=parameter.name,
