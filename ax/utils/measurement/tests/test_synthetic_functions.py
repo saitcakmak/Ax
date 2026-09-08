@@ -16,6 +16,7 @@ from ax.utils.measurement.synthetic_functions import (
     hartmann6,
 )
 from botorch.test_functions import synthetic as botorch_synthetic
+from pyre_extensions import assert_is_instance
 
 
 class TestSyntheticFunctions(TestCase):
@@ -100,9 +101,9 @@ class TestSyntheticFunctions(TestCase):
         #  SupportsAbs[SupportsRound[object]]]` but got `float`.
         self.assertAlmostEqual(aug_branin(np.array([1, 2, 1])), 21.62763539206238)
         self.assertAlmostEqual(
-            # pyre-fixme[16]: Item `float` of `Union[float, ndarray]` has no
-            #  attribute `__getitem__`.
-            aug_branin(np.array([[1, 2, 1], [1, 2, 1]]))[0],
+            assert_is_instance(
+                aug_branin(np.array([[1, 2, 1], [1, 2, 1]])), np.ndarray
+            )[0],
             21.62763539206238,
         )
         self.assertAlmostEqual(aug_branin.minimums[0][0], -np.pi)
